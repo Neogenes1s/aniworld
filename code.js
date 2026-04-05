@@ -7,6 +7,20 @@
 (function () {
   'use strict';
 
+  /* Self-Cache: Code für Offline-Nutzung speichern ══════ */
+  (function() {
+    try {
+      var CACHE = 'aw_code_v16';
+      var ss = Array.from(document.querySelectorAll('script[data-aw]'));
+      if (ss.length) {
+        var xu = ss[ss.length-1].src.split('?')[0];
+        var xr = new XMLHttpRequest();
+        xr.onload = function() { if (xr.status===200) localStorage.setItem(CACHE, xr.responseText); };
+        xr.open('GET', xu); xr.send();
+      }
+    } catch(e) {}
+  })();
+
   /* ═══════════════════════════════════════════════════════
      KONSTANTEN
   ═══════════════════════════════════════════════════════ */
@@ -375,8 +389,12 @@
       _cur = el;
       el.classList.add('aw-f');
       el.focus({ preventScroll: true });
-      // Element in Bildschirmmitte bringen
-      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+      // window.scrollTo() - zuverlässig auf Samsung TV Tizen
+      var r = el.getBoundingClientRect();
+      var margin = 150;
+      if (r.top < margin || r.bottom > innerHeight - 80) {
+        window.scrollTo(0, Math.max(0, window.pageYOffset + r.top - margin));
+      }
     },
 
     /* State komplett zurücksetzen (nach Seitenwechsel) */
@@ -412,34 +430,22 @@
 
     /* Erster Fokus beim Seitenstart */
     start: function() {
-      _list = this.buildList();
-      if (!_list.length) return;
-
-      // Seitentyp-spezifischer Start-Fokus
-      var first = null;
-
-      // Kalender: aktiven Tab fokussieren
-      var calActive = document.querySelector('li.ui-tabs-tab.active a, li.ui-tabs-tab.ui-state-active a');
-      if (calActive && _list.indexOf(calActive) >= 0) {
-        first = calActive;
-      }
-      // Episode: ersten Hoster
-      else if (document.querySelector('.hosterSiteVideo ul li a')) {
-        first = _list.find(function(el) { return el.closest('.hosterSiteVideo'); });
-      }
-      // Staffel/Detail: ersten Episoden-Link
-      else if (document.querySelector('.seasonEpisodesList')) {
-        first = _list.find(function(el) { return el.closest('.seasonEpisodesList'); });
-      }
-      // Generisch: erstes Element das KEIN reiner Nav-Link ist
-      if (!first) {
-        first = _list.find(function(el) {
-          return !el.closest('.header-container, .responsive-menu-container, .footer-container');
+      var self = this;
+      window.scrollTo(0, 0);
+      setTimeout(function() {
+        _list = self.buildList();
+        if (!_list.length) return;
+        var first = _list.find(function(el) {
+          var r = el.getBoundingClientRect();
+          return r.top >= 0 && r.top < innerHeight
+            && !el.closest('.header-container,.responsive-menu-container,.footer-container,.logo-wrapper');
+        });
+        if (!first) first = _list.find(function(el) {
+          return !el.closest('.header-container,.responsive-menu-container,.footer-container,.logo-wrapper');
         }) || _list[0];
-      }
-
-      _idx = _list.indexOf(first);
-      if (first) this.focus(first);
+        _idx = _list.indexOf(first);
+        if (first) self.focus(first);
+      }, 200);
     },
 
     /* Kalender-Tabs und Hoster LEFT/RIGHT */
@@ -489,20 +495,15 @@
      ZURÜCK-TASTE (immer zuverlässig)
   ═══════════════════════════════════════════════════════ */
   function goBack() {
-    // Fullscreen beenden
-    if (document.fullscreenElement) {
-      try { document.exitFullscreen(); } catch(e) {}
-      return;
-    }
-    // Fav-Panel schließen
+    if (document.fullscreenElement) { try { document.exitFullscreen(); } catch(e) {} return; }
     if (favOpen()) { closeFav(); return; }
-    // History zurück
-    if (history.length > 1) {
-      history.back();
-    } else {
-      // App beenden (Tizen)
-      try { tizen.application.getCurrentApplication().exit(); } catch(e) {}
-    }
+    try { history.back(); } catch(e) {}
+    var _url = location.href;
+    setTimeout(function() {
+      if (location.href === _url) {
+        try { tizen.application.getCurrentApplication().exit(); } catch(e) {}
+      }
+    }, 800);
   }
 
   /* ═══════════════════════════════════════════════════════
@@ -515,7 +516,7 @@
     var vid = document.querySelector('video');
 
     // BACK immer
-    if (c === K.BACK || c === K.ESC) {
+    if (c === K.BACK || c === K.ESC || c === 10182) {
       e.preventDefault(); goBack(); return;
     }
 
